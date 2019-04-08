@@ -5,7 +5,7 @@ Tokens between each other, providing a mutually agreed upon criteria is met. The
 time. If the criteria is not met, the agreement is voided.
 
 #### User Story
-> As a Storm Player (user) who owns a deli I want to pay Storm Tokens to other Players who visit my deli this week so I can drive foot traffic!
+> As a Storm Player (user) who owns a coffee shop I want to pay Storm Tokens to other Players who visit my coffee shop this week so I can drive foot traffic!
 
 #### Requirements
 
@@ -45,7 +45,7 @@ While we expect that an MVP could be coded up in an hour or two feel free to spe
 2. Generate a "magic link" for denying a transaction
 3. Include a deployment script
 4. Include unit tests/test coverage report
-5. Reach out to jason@stormx.io for clarification
+5. Reach out to calvin@stormx.io for clarification
 6. Produce a report of transactions opened and closed over the last hour/day/week/month
 7. Include a CI integration
 8. Some way to visualize the system (dashboard)
