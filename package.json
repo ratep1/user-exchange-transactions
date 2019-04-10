@@ -1,0 +1,27 @@
+{
+  "name": "backend-services",
+  "version": "0.0.1",
+  "main": "server.js",
+  "scripts": {
+    "start": "node bin/app.js",
+    "initialize": "node setup/initialize.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.com/stormx-inc/code-test/candidates/petar-m/backend-services.git"
+  },
+  "keywords": [
+    "code-test"
+  ],
+  "author": "r3v4n",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.18.0",
+    "body-parser": "^1.18.3",
+    "cors": "^2.8.5",
+    "express": "^4.16.4",
+    "redis": "^2.8.0",
+    "redis-connection-pool": "^1.7.2"
+  }
+}
