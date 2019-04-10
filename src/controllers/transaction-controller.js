@@ -62,6 +62,13 @@ router.get('/:id', (req, res) => {
 
 /**
  * create new transaction between two users
+ * 
+ * *NB* changes is POST req body
+ * admins: array[ids] instead of adminApproval as Map
+ * approvers: array[ids] instead of adminApproval as Map
+ * 
+ * response is same as Request in READ_ME file
+ * 
  */
 router.post('/', (req, res) => {
     const { id, value, from, to, expire, admins, approvers } = req.body;
