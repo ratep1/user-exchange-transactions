@@ -1,3 +1,9 @@
+### Instructions
+1. Start Redis server
+2. In config -> env -> development.json (if NODE_ENV is default) set port and host for redis
+3. run initialization ```npm run initialize```
+4. run app ```npm run start``` 
+
 ### Transaction Minter (Backend/Services)
 
 Transactions are an important part of the Storm platform. There is the potential for two Storm Players (users) to exchange 
