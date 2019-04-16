@@ -1,12 +1,21 @@
-const parseError = (error) => {
-    let { code, message } = error;
+class ErrorUtility {
+    static createError(code, errorMessage) {
+        code = code ? code : 500;
+        
+        return {
+            code: code,
+            message: errorMessage
+        };
+    }
 
-    code = code ? code : 500;
-    message = message ? message : JSON.stringify(error);
-
-    return { code, message };
+    static parseError(error) {
+        let { code, message } = error;
+    
+        code = code ? code : 500;
+        message = message ? message : JSON.stringify(error);
+    
+        return { code, message };
+    }
 }
 
-module.exports = {
-    parseError
-}
+module.exports = ErrorUtility;
