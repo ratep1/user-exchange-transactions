@@ -1,31 +1,27 @@
-const transactionClusterController = require('./transaction-cluster-controller');
+const transactionClusterService = require('./transaction-cluster-service');
 
 const redisCommands = require('../modules/redis/redis-commands');
+const transactionUtility = require('../modules/utils/transaction-utility');
 
 const { transactions: transactionKey } = require('../modules/redis/redis-constants').keys;
 
 const { statuses } = require('../system-constants');
 
 const initialize = () => {
-    return transactionClusterController.fetchAll()
+    return transactionClusterService.fetchAll()
     .then(entities => {
-        if(entities && Array.isArray(entities)) {
-            entities.filter(e => e.state === statuses.NEW || e.state === statuses.PENDING)
-                .filter(e => e.expire)
-                .forEach(transaction => {
-                    const expireDate = new Date(transaction.expire);
+        const outdatedTransactions = transactionUtility.filterOutdated(entities);
+        const validDateTransactions = transactionUtility.filterValidDate(entities);
+        
+        outdatedTransactions.forEach(transaction => {
+                transaction.state = statuses.DENIED;
+                redisCommands.hset(transactionKey, transaction.id, transaction);
+        });
 
-                    if(expireDate <= +new Date()) {
-                        transaction.state = statuses.DENIED;
-
-                        redisCommands.hset(transactionKey, transaction.id, transaction);
-                    }
-                    else {
-                        const timeout = expireDate.getTime() - (new Date()).getTime();
-                        setTimeout(() => transactionClusterController.checkExpiryDate(id), timeout);
-                    }
-                });
-        }
+        validDateTransactions.forEach(transaction => {
+            const timeout = new Date(transaction.expire).getTime() - (new Date()).getTime();
+            setTimeout(() => transactionClusterService.checkExpiryDate(id), timeout);
+        });
     })
     .catch(error => {
         throw error;
