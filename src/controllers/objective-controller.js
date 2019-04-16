@@ -3,7 +3,7 @@ const router = require('express').Router();
 const logger = require('../modules/logger');
 const { parseError } = require('../modules/utils/error-utility');
 
-const objectiveClusterController = require('../cluster/objective-cluster-controller');
+const objectiveClusterService = require('../cluster/objective-cluster-service');
 
 const controllerResponses = require('./controller-responses');
 
@@ -11,7 +11,7 @@ const controllerResponses = require('./controller-responses');
  * fetch list of all users from redis
  */
 router.get('/', (req, res) => {
-    objectiveClusterController.fetchAll()
+    objectiveClusterService.fetchAll()
     .then(entities => {
         res.status(200).json(controllerResponses.entitiesResponse(entities));
     })
@@ -29,7 +29,7 @@ router.post('/', (req, res) => {
     const { userId, taskId } = req.body;
     const timestamp = +new Date();
 
-    objectiveClusterController.create(userId, taskId, timestamp)
+    objectiveClusterService.create(userId, taskId, timestamp)
     .then(entity => {
         res.status(200).json(controllerResponses.entityResponse(entity));
     })
