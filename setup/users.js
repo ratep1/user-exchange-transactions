@@ -7,22 +7,22 @@ const users = [
     {
         "id": "2",
         "value": 0,
-        "role": "agent"
+        "role": "user"
     },
     {
         "id": "3",
         "value": 0,
-        "role": "agent"
+        "role": "user"
     },
     {
         "id": "4",
         "value": 0,
-        "role": "agent"
+        "role": "user"
     },
     {
         "id": "5",
         "value": 0,
-        "role": "agent"
+        "role": "user"
     }
 ]
 
