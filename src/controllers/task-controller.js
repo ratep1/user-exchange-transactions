@@ -3,7 +3,7 @@ const router = require('express').Router();
 const logger = require('../modules/logger');
 const { parseError } = require('../modules/utils/error-utility');
 
-const taskClusterController = require('../cluster/task-cluster-controller');
+const taskClusterService = require('../cluster/task-cluster-service');
 
 const controllerResponses = require('./controller-responses');
 
@@ -11,7 +11,7 @@ const controllerResponses = require('./controller-responses');
  * fetch list of all users from redis
  */
 router.get('/', (req, res) => {
-    taskClusterController.fetchAll()
+    taskClusterService.fetchAll()
     .then(entities => {
         res.status(200).json(controllerResponses.entitiesResponse(entities));
     })
@@ -28,7 +28,7 @@ router.get('/', (req, res) => {
 router.post('/', (req, res) => {
     const { id, name, value } = req.body;
 
-    taskClusterController.create(id, name, value)
+    taskClusterService.create(id, name, value)
     .then(entity => {
         res.status(200).json(controllerResponses.entityResponse(entity));
     })
@@ -50,7 +50,7 @@ router.patch('/:id', (req, res) => {
         return res.status(200).json(controllerResponses.errorResponse(400, 'Invalid data'));
     }
 
-    taskClusterController.updateValue(payloadId, value)
+    taskClusterService.updateValue(payloadId, value)
     .then(entity => {
         res.status(200).json(controllerResponses.entityResponse(entity));
     })
