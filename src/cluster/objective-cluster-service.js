@@ -1,15 +1,28 @@
+/**
+ * 
+ * Communication service between server and Redis.
+ * 
+ * map: objectives
+ * data: userId: array(tasks)
+ * 
+ */
+
 const redisCommands = require('../modules/redis/redis-commands');
 
-const userClusterController = require('./user-cluster-controller');
-const taskClusterController = require('./task-cluster-controller');
+const userClusterService = require('./user-cluster-service');
+const taskClusterService = require('./task-cluster-service');
+
+const ObjectiveEntity = require('../models/ObjectiveEntity');
+
+const errorUtility = require('../modules/utils/error-utility');
 
 const { objectives: objectiveKey } = require('../modules/redis/redis-constants').keys;
 
-class TaskClusterController {
+class ObjectiveClusterService {
     static fetchAll() {
         return redisCommands.hgetall(objectiveKey)
         .then(result => {
-            return Object.keys(result).map(key => createObject(result[key]));
+            return Object.keys(result).map(key => ObjectiveEntity.parseString(key, result[key]));
         })
         .catch(error => {
             throw error;
@@ -23,7 +36,7 @@ class TaskClusterController {
     
         return redisCommands.hget(objectiveKey, id)
         .then(result => {
-            return result ? createObject(result) : null;
+            return result ? ObjectiveEntity.parseString(id, result) : null;
         })
         .catch(error => {
             throw error;
@@ -46,36 +59,37 @@ class TaskClusterController {
         let user, task = null;
         let objectives = [];
     
-        return userClusterController.fetchById(userId)
+        return userClusterService.fetchById(userId)
         .then(entity => {
             if(!entity) {
-                throw { code: 404, message: `User does not exists` };
+                throw errorUtility.createError(404, `User does not exists`);
             }
 
             user = entity;
     
-            return taskClusterController.fetchById(taskId);
+            return taskClusterService.fetchById(taskId);
         })
         .then(entity => {
             if(!entity) {
-                throw { code: 404, message: `Task does not exists` };
+                throw errorUtility.createError(404, `Task does not exists`);
             }
 
-            task = { ...entity, timestamp };
+            task = entity;
+            task.setTimestamp(timestamp);
 
             return this.fetchById(userId);
         })
         .then(entities => {
-            if(entities && Array.isArray(entities)) {
-                objectives = objectives.concat(entities);
+            if(entities && entities.tasks && Array.isArray(entities.tasks)) {
+                objectives = objectives.concat(entities.tasks);
             }
 
             objectives.push(task);
 
-            return redisCommands.hset(objectiveKey, userId, task);
+            return redisCommands.hset(objectiveKey, userId, objectives);
         })
         .then(result => {
-            return userClusterController.incrementValue(userId, task.value);
+            return userClusterService.incrementValue(userId, task.value);
         })
         .then(result => {
             return this.fetchById(userId);
@@ -99,7 +113,7 @@ class TaskClusterController {
         return this.fetchById(id)
         .then(entity => {
             if(!entity) {
-                throw { code: 404, message: `User does not exists` };
+                throw errorUtility.createError(404, `User does not exists`);
             }
     
             entity.value = newValue;
@@ -115,15 +129,4 @@ class TaskClusterController {
     }
 }
 
-const createObject = (stringObject) => {
-    let data = null;
-
-    try {
-        data = JSON.parse(stringObject);
-    }
-    catch(error) { }
-
-    return data;
-}
-
-module.exports = TaskClusterController;
+module.exports = ObjectiveClusterService;

@@ -1,13 +1,15 @@
 const redisCommands = require('../modules/redis/redis-commands');
+const transactionUtility = require('../modules/utils/transaction-utility');
+const errorUtility = require('../modules/utils/error-utility');
 
-const userClusterController = require('./user-cluster-controller');
-const taskClusterController = require('./task-cluster-controller');
+const userClusterService = require('./user-cluster-service');
+
+const TransactionEntity = require('../models/TransactionEntity');
 
 const { transactions: transactionKey } = require('../modules/redis/redis-constants').keys;
-
 const { statuses } = require('../system-constants');
 
-class TransactionClusterController {
+class TransactionClusterService {
     static fetchAll() {
         return redisCommands.hgetall(transactionKey)
         .then(result => {
@@ -15,7 +17,7 @@ class TransactionClusterController {
                 return null;
             }
 
-            return Object.keys(result).map(key => createObject(result[key]));
+            return Object.keys(result).map(key => TransactionEntity.parseString(result[key]));
         })
         .catch(error => {
             throw error;
@@ -29,7 +31,7 @@ class TransactionClusterController {
     
         return redisCommands.hget(transactionKey, id)
         .then(result => {
-            return result ? createObject(result) : null;
+            return result ? TransactionEntity.parseString(result) : null;
         })
         .catch(error => {
             throw error;
@@ -78,14 +80,13 @@ class TransactionClusterController {
             return Promise.reject(new Error("Invalid approvers"));
         }
 
-        //check expire
+        if(!transactionUtility.isDateValid(expire)) {
+            return Promise.reject(new Error("Invalid expireDate"));
+        }
+
         let expireDate = null;
         if(expire) {
             expireDate = new Date(expire);
-
-            if(expireDate <= +new Date()) {
-                return Promise.reject(new Error("Invalid expireDate")); 
-            }
         }
 
         const approved = false;
@@ -101,37 +102,37 @@ class TransactionClusterController {
         return this.fetchById(id)
         .then(entity => {
             if(entity) {
-                throw { code: 409, message: `Transaction already exists` };
+                throw errorUtility.createError(409, `Transaction already exists`);
             }
 
-            const userPromises = approvers.map(aid => userClusterController.fetchById(aid));
+            const userPromises = approvers.map(aid => userClusterService.fetchById(aid));
 
             return Promise.all(userPromises);
         })
         .then(entities => {
             userList = entities.filter(e => e);
             if(userList.length < approvers.length) {
-                throw { code: 404, message: `Approvers are not valid` };
+                throw errorUtility.createError(404, `Approvers are not valid`);
             }
 
-            return userClusterController.fetchById(from);
+            return userClusterService.fetchById(from);
         })
         .then(entity => {
             if(!entity) {
-                throw { code: 404, message: `From does not exists` };
+                throw errorUtility.createError(404, `From does not exists`);
             }
 
             fromUser = entity;
 
-            return userClusterController.fetchById(to);
+            return userClusterService.fetchById(to);
         })
         .then(entity => {
             if(!entity) {
-                throw { code: 404, message: `To does not exists` };
+                throw errorUtility.createError(404, `To does not exists`);
             }
 
             if(requireAdmin) {
-                return userClusterController.fetchById(admin);
+                return userClusterService.fetchById(admin);
             }
             else {
                 return;
@@ -140,30 +141,21 @@ class TransactionClusterController {
         .then(entity => {
             if(requireAdmin) {
                 if(!entity) {
-                    throw { code: 404, message: `Admin is not valid` };
+                    throw errorUtility.createError(404, `Admin is not valid`);
                 }
 
                 if(entity.role !== 'admin') {
-                    throw { code: 404, message: `Admin role is not valid` };
+                    throw errorUtility.createError(404, `Admin role is not valid`);
                 }
             }
             
             return this.fetchByUserId(from);
         })
         .then(entities => {
-            let currentFromValue = 0;
-            if(entities && Array.isArray(entities)) {
-                entities = entities.filter(e => e.from === from);
-                if(entities.length > 0) {
-                    currentFromValue = -entities.map(e => e.value).reduce((a, b) => a + b);
-                }
-            }
-
-            currentFromValue -= value;
-            currentFromValue += fromUser.value;
+            const currentFromValue = transactionUtility.calculateValue(from, fromUser.value, value, entities);
 
             if(currentFromValue <= 0) {
-                throw { code: 500, message: `From user does not have enough value for this transaction` };
+                throw errorUtility.createError(500, `From user does not have enough value for this transaction`);
             }
 
             let adminApproval = null;
@@ -182,28 +174,17 @@ class TransactionClusterController {
                 approverMap[approver] = { approval: statuses.PENDING, approved: approved };
             });
 
-            const newTransaction = {
-                id: id,
-                value: value,
-                from: from,
-                to: to,
-                expire: expire,
-                state: state,
-                requireAdmin: requireAdmin,
-                adminApproval: adminApproval,
-                approved: approved,
-                approvers: approverMap
-            }
-
-            if(expire) {
-                const timeout = expireDate.getTime() - (new Date()).getTime();
-                setTimeout(() => this.checkExpiryDate(id), timeout);
-            }
+            const newTransaction = 
+                new TransactionEntity(id, value, from, to, expire, state, approved, requireAdmin, adminApproval, approverMap);
 
             return redisCommands.hset(transactionKey, id, newTransaction);
         })
         .then(result => {
             return this.fetchById(id);
+        })
+        .then(entity => {
+            this.setTimeout(entity);
+            return entity;
         })
         .catch(error => {
             throw error;
@@ -222,44 +203,36 @@ class TransactionClusterController {
         let transaction, user = null;
 
         return this.fetchById(id)
-        .then(entity => {
+        .then(async entity => {
             if(!entity) {
-                throw { code: 404, message: `Transaction does not exists` };
+                throw errorUtility.createError(404, `Transaction does not exists`);
             }
 
             transaction = entity;
 
             if(transaction.state === statuses.DENIED || transaction.state === statuses.APPROVED) {
-                throw { code: 403, message: `Transaction cannot be changed` };
+                throw errorUtility.createError(403, `Transaction cannot be changed`);
             }
 
-            if(transaction.expire) {
-                const expireDate = new Date(transaction.expire);
+            if(!transactionUtility.isDateValid(transaction.expire)) {
+                transaction.state = statuses.DENIED;
 
-                if(expireDate <= +new Date()) {
-                    transaction.state = statuses.DENIED;
-
-                    redisCommands.hset(transactionKey, id, transaction)
-                    .then(() => {
-                        throw { code: 498, message: `Time for this transaction has been expired` };
-                    })
-                    .catch(error => {
-                        throw error;
-                    })
-                }
+                await redisCommands.hset(transactionKey, id, transaction)
+                    
+                throw errorUtility.createError(498, `Time for this transaction has been expired`);
             }
 
-            return userClusterController.fetchById(userId);
+            return userClusterService.fetchById(userId);
         })
         .then(entity => {
             if(!entity) {
-                throw { code: 404, message: `User does not exists` };
+                throw errorUtility.createError(404, `User does not exists`);
             }
             user = entity;
 
             const { approvers } = transaction;
             if(!(userId in approvers)) {
-                throw { code: 404, message: `User is not part of transaction` };
+                throw errorUtility.createError(404, `User is not part of transaction`);
             }
 
             if(approvers[userId].approval === statuses.PENDING) {
@@ -282,14 +255,14 @@ class TransactionClusterController {
         })
         .then(result => {
             if(transaction.approved) {
-                return userClusterController.incrementValue(transaction.to, transaction.value);
+                return userClusterService.incrementValue(transaction.to, transaction.value);
             }
 
             return;
         })
         .then(result => {
             if(transaction.approved) {
-                return userClusterController.decrementValue(transaction.from, transaction.value);
+                return userClusterService.decrementValue(transaction.from, transaction.value);
             }
 
             return;
@@ -314,45 +287,37 @@ class TransactionClusterController {
         let transaction, user = null;
 
         return this.fetchById(id)
-        .then(entity => {
+        .then(async entity => {
             if(!entity) {
-                throw { code: 404, message: `Transaction does not exists` };
+                throw errorUtility.createError(404, `Transaction does not exists`);
             }
 
             transaction = entity;
 
             if(transaction.state === statuses.DENIED || transaction.state === statuses.APPROVED) {
-                throw { code: 403, message: `Transaction cannot be changed` };
+                throw errorUtility.createError(403, `Transaction cannot be changed`);
             }
 
-            if(transaction.expire) {
-                const expireDate = new Date(transaction.expire);
+            if(!transactionUtility.isDateValid(transaction.expire)) {
+                transaction.state = statuses.DENIED;
 
-                if(expireDate <= +new Date()) {
-                    transaction.state = statuses.DENIED;
-
-                    redisCommands.hset(transactionKey, id, transaction)
-                    .then(() => {
-                        throw { code: 498, message: `Time for this transaction has been expired` };
-                    })
-                    .catch(error => {
-                        throw error;
-                    })
-                }
+                await redisCommands.hset(transactionKey, id, transaction)
+                    
+                throw errorUtility.createError(498, `Time for this transaction has been expired`);
             }
 
-            return userClusterController.fetchById(userId);
+            return userClusterService.fetchById(userId);
         })
         .then(entity => {
             if(!entity) {
-                throw { code: 404, message: `User does not exists` };
+                throw errorUtility.createError(404, `User does not exists`);
             }
 
             user = entity;
 
             const { approvers } = transaction;
             if(!(userId in approvers)) {
-                throw { code: 404, message: `User is not part of transaction` };
+                throw errorUtility.createError(404, `User is not part of transaction`);
             }
 
             if(approvers[userId].approval === statuses.PENDING) {
@@ -384,54 +349,46 @@ class TransactionClusterController {
         let transaction, user = null;
 
         return this.fetchById(id)
-        .then(entity => {
+        .then(async entity => {
             if(!entity) {
-                throw { code: 404, message: `Transaction does not exists` };
+                throw errorUtility.createError(404, `Transaction does not exists`);
             }
 
             transaction = entity;
 
             if(transaction.state === statuses.DENIED || transaction.state === statuses.APPROVED) {
-                throw { code: 403, message: `Transaction cannot be changed` };
+                throw errorUtility.createError(403, `Transaction cannot be changed`);
             }
 
-            if(transaction.expire) {
-                const expireDate = new Date(transaction.expire);
+            if(!transactionUtility.isDateValid(transaction.expire)) {
+                transaction.state = statuses.DENIED;
 
-                if(expireDate <= +new Date()) {
-                    transaction.state = statuses.DENIED;
-
-                    redisCommands.hset(transactionKey, id, transaction)
-                    .then(() => {
-                        throw { code: 498, message: `Time for this transaction has been expired` };
-                    })
-                    .catch(error => {
-                        throw error;
-                    })
-                }
+                await redisCommands.hset(transactionKey, id, transaction)
+                    
+                throw errorUtility.createError(498, `Time for this transaction has been expired`);
             }
 
-            return userClusterController.fetchById(userId);
+            return userClusterService.fetchById(userId);
         })
         .then(entity => {
             if(!entity) {
-                throw { code: 404, message: `User does not exists` };
+                throw errorUtility.createError(404, `User does not exists`);
             }
             user = entity;
             if(user.role !== 'admin') {
-                throw { code: 403, message: `User is not admin` };
+                throw errorUtility.createError(403, `User is not admin`);
             }
 
             const { adminApproval, approvers } = transaction;
             if(!(userId in adminApproval)) {
-                throw { code: 404, message: `User is not part of transaction` };
+                throw errorUtility.createError(404, `User is not part of transaction`);
             }
 
             const approversPending = Object.keys(approvers).map(key => approvers[key])
                 .filter(approver => approver.state === statuses.NEW || approver.state === statuses.PENDING || approver.state === statuses.DENIED);
 
             if(approversPending.length > 0) {
-                throw { code: 403, message: `Transaction is not approved by other users` }; 
+                throw errorUtility.createError(403, `Transaction is not approved by other users`); 
             }
 
             if(adminApproval[userId].approval === statuses.PENDING) {
@@ -447,14 +404,14 @@ class TransactionClusterController {
         })
         .then(result => {
             if(transaction.approved) {
-                return userClusterController.incrementValue(transaction.to, transaction.value);
+                return userClusterService.incrementValue(transaction.to, transaction.value);
             }
 
             return;
         })
         .then(result => {
             if(transaction.approved) {
-                return userClusterController.decrementValue(transaction.from, transaction.value);
+                return userClusterService.decrementValue(transaction.from, transaction.value);
             }
 
             return;
@@ -467,6 +424,16 @@ class TransactionClusterController {
         });
     }
 
+    static setTimeout(transaction) {
+        const { id, expire } = transaction;
+
+        if(expire) {
+            const expireDate = new Date(expire);
+            const timeout = expireDate.getTime() - (new Date()).getTime();
+            setTimeout(() => this.checkExpiryDate(id), timeout);
+        }
+    }
+
     static checkExpiryDate(id) {
         if(!id || typeof id !== "string") {
             return Promise.reject(new Error("Invalid id"));
@@ -475,31 +442,23 @@ class TransactionClusterController {
         let transaction = null;
 
         return this.fetchById(id)
-        .then(entity => {
+        .then(async entity => {
             if(!entity) {
-                throw { code: 404, message: `Transaction does not exists` };
+                throw errorUtility.createError(404, `Transaction does not exists`);
             }
 
             transaction = entity;
 
             if(transaction.state === statuses.DENIED || transaction.state === statuses.APPROVED) {
-                throw { code: 403, message: `Transaction cannot be changed` };
+                throw errorUtility.createError(403, `Transaction cannot be changed`);
             }
 
-            if(transaction.expire) {
-                const expireDate = new Date(transaction.expire);
+            if(!transactionUtility.isDateValid(transaction.expire)) {
+                transaction.state = statuses.DENIED;
 
-                if(expireDate <= +new Date()) {
-                    transaction.state = statuses.DENIED;
-
-                    redisCommands.hset(transactionKey, id, transaction)
-                    .then(() => {
-                        throw { code: 498, message: `Time for this transaction has been expired` };
-                    })
-                    .catch(error => {
-                        throw error;
-                    })
-                }
+                await redisCommands.hset(transactionKey, id, transaction)
+                    
+                throw errorUtility.createError(498, `Time for this transaction has been expired`);
             }
         })
         .catch(error => {
@@ -508,15 +467,4 @@ class TransactionClusterController {
     }
 }
 
-const createObject = (stringObject) => {
-    let data = null;
-
-    try {
-        data = JSON.parse(stringObject);
-    }
-    catch(error) { }
-
-    return data;
-}
-
-module.exports = TransactionClusterController;
+module.exports = TransactionClusterService;

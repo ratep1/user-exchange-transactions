@@ -1,12 +1,16 @@
 const redisCommands = require('../modules/redis/redis-commands');
 
+const errorUtility = require('../modules/utils/error-utility');
+
+const TaskEntity = require('../models/TaskEntity');
+
 const { tasks: taskKey } = require('../modules/redis/redis-constants').keys;
 
-class TaskClusterController {
+class TaskClusterService {
     static fetchAll() {
         return redisCommands.hgetall(taskKey)
         .then(result => {
-            return Object.keys(result).map(key => createObject(result[key]));
+            return Object.keys(result).map(key => TaskEntity.parseString(result[key]));
         })
         .catch(error => {
             throw error;
@@ -20,7 +24,7 @@ class TaskClusterController {
     
         return redisCommands.hget(taskKey, id)
         .then(result => {
-            return result ? createObject(result) : null;
+            return result ? TaskEntity.parseString(result) : null;
         })
         .catch(error => {
             throw error;
@@ -45,7 +49,7 @@ class TaskClusterController {
         return this.fetchById(id)
         .then(entity => {
             if(entity) {
-                throw { code: 409, message: `User already exists` };
+                throw errorUtility.createError(409, `User already exists`);
             }
 
             const data = {
@@ -78,7 +82,7 @@ class TaskClusterController {
         return this.fetchById(id)
         .then(entity => {
             if(!entity) {
-                throw { code: 404, message: `User does not exists` };
+                throw errorUtility.createError(404, `User does not exists`);
             }
     
             entity.value = newValue;
@@ -106,4 +110,4 @@ const createObject = (stringObject) => {
     return data;
 }
 
-module.exports = TaskClusterController;
+module.exports = TaskClusterService;

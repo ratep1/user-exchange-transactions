@@ -1,13 +1,17 @@
 const redisCommands = require('../modules/redis/redis-commands');
 
+const UserEntity = require('../models/UserEntity');
+
+const errorUtility = require('../modules/utils/error-utility');
+
 const { users: usersKey } = require('../modules/redis/redis-constants').keys;
 const { userValueDefault } = require('../system-constants');
 
-class UserClusterController {
+class UserClusterService {
     static fetchAll() {
         return redisCommands.hgetall(usersKey)
         .then(result => {
-            return Object.keys(result).map(key => createObject(result[key]));
+            return Object.keys(result).map(key => UserEntity.parseString(result[key]));
         })
         .catch(error => {
             throw error;
@@ -21,7 +25,7 @@ class UserClusterController {
     
         return redisCommands.hget(usersKey, id)
         .then(result => {
-            return result ? createObject(result) : null;
+            return result ? UserEntity.parseString(result) : null;
         })
         .catch(error => {
             throw error;
@@ -40,7 +44,7 @@ class UserClusterController {
         return this.fetchById(id)
         .then(entity => {
             if(entity) {
-                throw { code: 409, message: `User already exists` };
+                throw errorUtility.createError(409, `User already exists`);
             }
 
             const user = { id, role, value: userValueDefault };
@@ -69,10 +73,10 @@ class UserClusterController {
         return this.fetchById(id)
         .then(entity => {
             if(!entity) {
-                throw { code: 404, message: `User does not exists` };
+                throw errorUtility.createError(404, `User does not exists`);
             }
     
-            entity.value += addAmount;
+            entity.incrementValue(addAmount);
     
             return redisCommands.hset(usersKey, id, entity);
         })
@@ -98,10 +102,10 @@ class UserClusterController {
         return this.fetchById(id)
         .then(entity => {
             if(!entity) {
-                throw { code: 404, message: `User does not exists` };
+                throw errorUtility.createError(404, `User does not exists`);
             }
     
-            entity.value -= decreseAmount;
+            entity.decrementValue(decreseAmount);
     
             return redisCommands.hset(usersKey, id, entity);
         })
@@ -114,16 +118,4 @@ class UserClusterController {
     }
 }
 
-const createObject = (stringObject) => {
-    let data = null;
-
-    try {
-        data = JSON.parse(stringObject);
-        data.value = parseFloat(data.value);
-    }
-    catch(error) { }
-
-    return data;
-}
-
-module.exports = UserClusterController
+module.exports = UserClusterService
