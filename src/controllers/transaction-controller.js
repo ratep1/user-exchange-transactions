@@ -3,12 +3,12 @@ const router = require('express').Router();
 const logger = require('../modules/logger');
 const { parseError } = require('../modules/utils/error-utility');
 
-const transactionClusterController = require('../cluster/transaction-cluster-controller');
+const transactionClusterService = require('../cluster/transaction-cluster-service');
 
 const controllerResponses = require('./controller-responses');
 
 router.get('/', (req, res) => {
-    transactionClusterController.fetchAll()
+    transactionClusterService.fetchAll()
     .then(entities => {
         res.status(200).json(controllerResponses.entitiesResponse(entities));
     })
@@ -31,10 +31,10 @@ router.get('/:id', (req, res) => {
         approve = approve && approve === 'true' ? true : false;
         let worker = null;
         if(approve) {
-            worker = () => transactionClusterController.approveUser(id, userId);
+            worker = () => transactionClusterService.approveUser(id, userId);
         }
         else {
-            worker = () => transactionClusterController.denyUser(id, userId);
+            worker = () => transactionClusterService.denyUser(id, userId);
         }
 
         worker()
@@ -48,7 +48,7 @@ router.get('/:id', (req, res) => {
         });
     }
     else {
-        transactionClusterController.fetchById(id)
+        transactionClusterService.fetchById(id)
         .then(entity => {
             res.status(200).json(controllerResponses.entityResponse(entity));
         })
@@ -73,7 +73,7 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
     const { id, value, from, to, expire, admins, approvers } = req.body;
 
-    transactionClusterController.create(id, value, from, to, expire, admins, approvers)
+    transactionClusterService.create(id, value, from, to, expire, admins, approvers)
     .then(entity => {
         res.status(200).json(controllerResponses.entityResponse(entity));
     })
@@ -93,10 +93,10 @@ router.get('/:id', (req, res) => {
         approve = approve && approve === 'true' ? true : false;
         let worker = null;
         if(approve) {
-            worker = () => transactionClusterController.approveUser(id, userId);
+            worker = () => transactionClusterService.approveUser(id, userId);
         }
         else {
-            worker = () => transactionClusterController.denyUser(id, userId);
+            worker = () => transactionClusterService.denyUser(id, userId);
         }
 
         worker()
@@ -110,7 +110,7 @@ router.get('/:id', (req, res) => {
         });
     }
     else {
-        transactionClusterController.fetchById(id)
+        transactionClusterService.fetchById(id)
         .then(entity => {
             res.status(200).json(controllerResponses.entityResponse(entity));
         })
@@ -131,10 +131,10 @@ router.get('/:id', (req, res) => {
         approve = approve && approve === 'true' ? true : false;
         let worker = null;
         if(approve) {
-            worker = () => transactionClusterController.approveUser(id, userId);
+            worker = () => transactionClusterService.approveUser(id, userId);
         }
         else {
-            worker = () => transactionClusterController.denyUser(id, userId);
+            worker = () => transactionClusterService.denyUser(id, userId);
         }
 
         worker()
@@ -148,7 +148,7 @@ router.get('/:id', (req, res) => {
         });
     }
     else {
-        transactionClusterController.fetchById(id)
+        transactionClusterService.fetchById(id)
         .then(entity => {
             res.status(200).json(controllerResponses.entityResponse(entity));
         })
@@ -168,7 +168,7 @@ router.patch('/:id/approve', (req, res) => {
         return res.status(200).json(controllerResponses.errorResponse(400, 'Invalid data'));
     }
 
-    transactionClusterController.approveUser(payloadId, userId)
+    transactionClusterService.approveUser(payloadId, userId)
     .then(entity => {
         res.status(200).json(controllerResponses.entityResponse(entity));
     })
@@ -187,7 +187,7 @@ router.patch('/:id/deny', (req, res) => {
         return res.status(200).json(controllerResponses.errorResponse(400, 'Invalid data'));
     }
 
-    transactionClusterController.denyUser(payloadId, userId)
+    transactionClusterService.denyUser(payloadId, userId)
     .then(entity => {
         res.status(200).json(controllerResponses.entityResponse(entity));
     })
@@ -206,7 +206,7 @@ router.patch('/:id/admin', (req, res) => {
         return res.status(200).json(controllerResponses.errorResponse(400, 'Invalid data'));
     }
 
-    transactionClusterController.adminApprove(payloadId, userId)
+    transactionClusterService.adminApprove(payloadId, userId)
     .then(entity => {
         res.status(200).json(controllerResponses.entityResponse(entity));
     })
