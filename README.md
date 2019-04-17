@@ -1,5 +1,6 @@
 ### Instructions
 1. Start Redis server
+> docker/start-redis.sh
 2. In config -> env -> development.json (if NODE_ENV is default) set port and host for redis
 3. run initialization ```npm run initialize```
 4. run app ```npm run start``` 
