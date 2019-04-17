@@ -1,6 +1,7 @@
-image=redis
-name=backend_redis
+image=redis:latest
+name=redis
 
+docker pull $image
 docker stop $name
 docker rm $name
 
